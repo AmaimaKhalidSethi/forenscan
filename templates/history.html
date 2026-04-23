@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — Scan History{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scan History</h1>
+    <p class="text-secondary" style="font-size:0.85rem;margin-top:0.25rem">
+      {{ history | length }} recorded scan session{{ 's' if history | length != 1 else '' }}
+    </p>
+  </div>
+  <a href="{{ url_for('index') }}" class="btn-forensic">
+    <i class="bi bi-plus me-1"></i>New Scan
+  </a>
+</div>
+
+{% if not history %}
+  <div class="card-forensic p-5 text-center">
+    <i class="bi bi-archive" style="font-size:2.5rem;color:var(--text-muted);display:block;margin-bottom:1rem"></i>
+    <div style="font-family:var(--font-mono);font-size:0.82rem;color:var(--text-secondary)">No scan sessions recorded yet.</div>
+    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.4rem">Upload a file or scan a directory to begin.</div>
+  </div>
+{% else %}
+  <div class="table-wrapper">
+    <table class="table-forensic">
+      <thead>
+        <tr>
+          <th>Scan ID</th>
+          <th>Timestamp</th>
+          <th>Files</th>
+          <th>Anomalies</th>
+          <th>Highest Risk</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for session in history %}
+        <tr>
+          <td style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+            {{ session.scan_id }}
+          </td>
+          <td style="font-family:var(--font-mono);font-size:0.72rem;color:var(--text-secondary)">
+            {{ session.scan_timestamp[:19].replace('T',' ') if session.scan_timestamp else '—' }}
+          </td>
+          <td style="font-family:var(--font-mono);font-size:0.78rem;color:var(--accent)">
+            {{ session.file_count }}
+          </td>
+          <td>
+            {% if session.anomaly_count and session.anomaly_count > 0 %}
+              <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--risk-high)">
+                {{ session.anomaly_count }}
+              </span>
+            {% else %}
+              <span style="color:var(--text-muted);font-size:0.72rem">0</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="risk-badge badge-{{ session.highest_risk | lower }}">
+              {{ session.highest_risk }}
+            </span>
+          </td>
+          <td>
+            <div class="d-flex gap-2">
+              <a href="{{ url_for('results', scan_id=session.scan_id) }}" class="btn-forensic btn-sm-forensic">
+                <i class="bi bi-eye me-1"></i>View
+              </a>
+              <a href="{{ url_for('export', scan_id=session.scan_id, fmt='json') }}" class="btn-forensic btn-sm-forensic" style="border-color:var(--border-accent);color:var(--text-secondary)">
+                JSON
+              </a>
+              <a href="{{ url_for('export', scan_id=session.scan_id, fmt='csv') }}" class="btn-forensic btn-sm-forensic" style="border-color:var(--border-accent);color:var(--text-secondary)">
+                CSV
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

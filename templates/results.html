@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — Results{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Scan Results</h1>
+    <div style="font-family:var(--font-mono);font-size:0.68rem;color:var(--text-muted);margin-top:0.25rem;letter-spacing:1px">
+      {{ scan_id }}
+    </div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('export', scan_id=scan_id, fmt='json') }}" class="btn-forensic btn-sm-forensic">
+      <i class="bi bi-filetype-json me-1"></i>Export JSON
+    </a>
+    <a href="{{ url_for('export', scan_id=scan_id, fmt='csv') }}" class="btn-forensic btn-sm-forensic">
+      <i class="bi bi-filetype-csv me-1"></i>Export CSV
+    </a>
+    <a href="{{ url_for('index') }}" class="btn-forensic btn-sm-forensic" style="border-color:var(--border-accent);color:var(--text-secondary)">
+      <i class="bi bi-plus me-1"></i>New Scan
+    </a>
+  </div>
+</div>
+
+{# ── Stats Bar ──────────────────────────────────────────────────────── #}
+<div class="stats-bar row g-3 mb-4">
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number">{{ stats.total }}</span>
+      <span class="stat-label">Files</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box {% if stats.critical %}stat-box-alert{% endif %}">
+      <span class="stat-number" style="color:var(--risk-critical)">{{ stats.critical }}</span>
+      <span class="stat-label">Critical</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-high)">{{ stats.high }}</span>
+      <span class="stat-label">High</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-medium)">{{ stats.medium }}</span>
+      <span class="stat-label">Medium</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-low)">{{ stats.low }}</span>
+      <span class="stat-label">Low</span>
+    </div>
+  </div>
+  <div class="col-6 col-sm-4 col-md-2">
+    <div class="stat-box {% if stats.anomalies %}stat-box-alert{% endif %}">
+      <span class="stat-number" style="color:var(--risk-high)">{{ stats.anomalies }}</span>
+      <span class="stat-label">Anomalies</span>
+    </div>
+  </div>
+</div>
+
+{# ── Anomaly Banner ─────────────────────────────────────────────────── #}
+{% if stats.anomalies > 0 %}
+<div class="anomaly-alert mb-4">
+  <i class="bi bi-exclamation-triangle-fill me-2" style="color:var(--risk-critical)"></i>
+  <strong style="color:var(--risk-critical);font-family:var(--font-mono);font-size:0.8rem">
+    {{ stats.anomalies }} anomal{{ 'y' if stats.anomalies == 1 else 'ies' }} detected
+  </strong>
+  <span style="color:var(--text-secondary);font-size:0.8rem;margin-left:0.5rem">
+    — Files exhibiting suspicious characteristics are highlighted below.
+  </span>
+</div>
+{% endif %}
+
+{# ── Result Blocks ──────────────────────────────────────────────────── #}
+{% for r in results %}
+{% set card_id = "result-" ~ loop.index %}
+<div class="result-card mb-3 {% if r.anomaly_flag %}result-card-anomaly{% endif %}">
+  {# Collapsible header — Bug 13 fixed: role=button, tabindex, cursor #}
+  <div class="result-header"
+       role="button"
+       tabindex="0"
+       data-bs-toggle="collapse"
+       data-bs-target="#{{ card_id }}"
+       aria-expanded="false"
+       aria-controls="{{ card_id }}"
+       onkeydown="if(event.key==='Enter'||event.key===' '){this.click();event.preventDefault();}">
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="risk-badge badge-{{ r.risk_level | lower }}">{{ r.risk_level }}</span>
+      {% if r.anomaly_flag %}
+        <span class="risk-badge" style="color:var(--risk-critical);border-color:var(--risk-critical);background:rgba(255,71,87,0.08)">
+          ANOMALY
+        </span>
+      {% endif %}
+      <span style="font-family:var(--font-mono);font-size:0.82rem;color:var(--text-primary)">
+        {{ r.filename }}
+      </span>
+      <span style="font-size:0.72rem;color:var(--text-muted);margin-left:auto">
+        {{ r.detected_type or 'UNKNOWN' }}
+      </span>
+      {% if r.file_size is not none %}
+        <span style="font-size:0.7rem;color:var(--text-muted)">
+          {{ (r.file_size / 1024) | round(1) }} KB
+        </span>
+      {% endif %}
+      <i class="bi bi-chevron-down collapse-icon"></i>
+    </div>
+
+    {% if r.filepath and r.filepath != r.filename %}
+      <div style="font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono);margin-top:0.3rem;padding-left:0.1rem">
+        {{ r.filepath }}
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="collapse" id="{{ card_id }}">
+    <div class="result-body">
+      {% if r.error %}
+        <div class="anomaly-alert mb-3">
+          <i class="bi bi-x-octagon me-2" style="color:var(--risk-high)"></i>
+          <span style="color:var(--risk-high);font-family:var(--font-mono);font-size:0.78rem">
+            Analysis error: {{ r.error }}
+          </span>
+        </div>
+      {% endif %}
+
+      {% if r.anomaly_flag and r.anomaly_reason %}
+        <div class="anomaly-alert mb-3">
+          <div style="font-family:var(--font-mono);font-size:0.72rem;color:var(--risk-critical);letter-spacing:1px;text-transform:uppercase;margin-bottom:0.3rem">
+            Anomaly Detail
+          </div>
+          <span style="font-size:0.8rem;color:var(--text-primary)">{{ r.anomaly_reason }}</span>
+        </div>
+      {% endif %}
+
+      {# Metadata grid #}
+      <div class="meta-grid mb-4">
+        {% set meta_rows = [
+          ("Detected Type",  r.detected_type or "Unknown"),
+          ("MIME Type",      r.mime_type or "—"),
+          ("Declared Ext",   ("." ~ r.declared_ext) if r.declared_ext else "none"),
+          ("File Size",      ((r.file_size | filesizeformat) if r.file_size is not none else "—")),
+          ("Scan Time",      r.scan_timestamp or "—"),
+        ] %}
+        {% for label, value in meta_rows %}
+          <div class="meta-row">
+            <span class="section-label">{{ label }}</span>
+            <span style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary)">{{ value }}</span>
+          </div>
+        {% endfor %}
+
+        {# Footer valid — Bug 12 fixed: explicit three-way check #}
+        <div class="meta-row">
+          <span class="section-label">Footer Valid</span>
+          <span style="font-family:var(--font-mono);font-size:0.78rem">
+            {% if r.footer_valid is none %}
+              <span style="color:var(--text-muted)">N/A</span>
+            {% elif r.footer_valid %}
+              <span style="color:var(--risk-low)">Yes</span>
+            {% else %}
+              <span style="color:var(--risk-high)">No</span>
+            {% endif %}
+          </span>
+        </div>
+      </div>
+
+      {# Hash boxes #}
+      <div class="section-label mb-2">Cryptographic Hashes</div>
+      <div class="mb-1" style="font-size:0.68rem;color:var(--text-muted)">MD5</div>
+      <div class="hash-box mb-2">{{ r.md5_hash or '—' }}</div>
+      <div class="mb-1" style="font-size:0.68rem;color:var(--text-muted)">SHA-256</div>
+      <div class="hash-box mb-4">{{ r.sha256_hash or '—' }}</div>
+
+      {# Hex viewer #}
+      {% if r.hex_preview %}
+        <div class="section-label mb-2">Hex Preview — First 64 Bytes</div>
+        <div class="hex-viewer">
+          {% for row in r.hex_preview %}
+            <div class="hex-row">
+              <span class="hex-addr">{{ row.address }}</span>
+              <span class="hex-bytes">{{ row.hex }}</span>
+              <span class="hex-ascii">{{ row.ascii }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

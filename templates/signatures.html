@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — Signature Database{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>Signature Database</h1>
+    <p class="text-secondary" style="font-size:0.85rem;margin-top:0.25rem">
+      {{ signatures | length }} magic-number signatures across {{ categories | length }} categories
+    </p>
+  </div>
+</div>
+
+{# ── Live Search — Bug 15 fix ───────────────────────────────────────── #}
+<div class="mb-3">
+  <input
+    type="text"
+    id="sigSearch"
+    class="input-forensic"
+    style="max-width:400px"
+    placeholder="Search by name, MIME, extension..."
+    oninput="filterSigs(this.value)"
+    autocomplete="off"
+    spellcheck="false"
+  >
+</div>
+
+{# ── Category Filters — Bug 14 fixed: pass event ────────────────────── #}
+<div class="cat-filters mb-3 d-flex flex-wrap gap-2">
+  <button class="btn-filter active" data-cat="ALL" onclick="filterCat('ALL', this, event)">
+    All <span class="cat-count">{{ signatures | length }}</span>
+  </button>
+  {% for cat in categories %}
+    <button class="btn-filter" data-cat="{{ cat }}" onclick="filterCat('{{ cat }}', this, event)">
+      {{ cat }}
+      <span class="cat-count">{{ signatures | selectattr('category','equalto',cat) | list | length }}</span>
+    </button>
+  {% endfor %}
+</div>
+
+{# ── Risk Legend ─────────────────────────────────────────────────────── #}
+<div class="d-flex gap-3 mb-3">
+  {% for level, color in [('CRITICAL','risk-critical'),('HIGH','risk-high'),('MEDIUM','risk-medium'),('LOW','risk-low')] %}
+    <span class="risk-badge badge-{{ level | lower }}">{{ level }}</span>
+  {% endfor %}
+</div>
+
+{# ── Signatures Table ─────────────────────────────────────────────────── #}
+<div class="table-wrapper">
+  <table class="table-forensic" id="sigTable">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Category</th>
+        <th>Header (Hex)</th>
+        <th>Footer</th>
+        <th>Extensions</th>
+        <th>MIME Type</th>
+        <th>Risk</th>
+      </tr>
+    </thead>
+    <tbody id="sigTableBody">
+      {% for sig in signatures %}
+      <tr data-cat="{{ sig.category }}">
+        <td style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary)">
+          {{ sig.name }}
+        </td>
+        <td>
+          <span class="cat-badge cat-{{ sig.category | lower }}">{{ sig.category }}</span>
+        </td>
+        <td>
+          <span class="hex-bytes" style="font-size:0.7rem">
+            {{ sig.header_hex[:23] }}{% if sig.header_hex | length > 23 %}…{% endif %}
+          </span>
+        </td>
+        <td>
+          {% if sig.footer_hex %}
+            <span class="hex-bytes" style="font-size:0.7rem">{{ sig.footer_hex }}</span>
+          {% else %}
+            <span style="color:var(--text-muted);font-size:0.72rem">—</span>
+          {% endif %}
+        </td>
+        <td style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-secondary)">
+          {% set exts = sig.extensions | from_json %}
+          {{ exts | join(', .') | replace('', '.', 1) }}
+        </td>
+        <td style="font-size:0.72rem;color:var(--text-muted)">{{ sig.mime_type }}</td>
+        <td>
+          <span class="risk-badge badge-{{ sig.risk_level | lower }}">{{ sig.risk_level }}</span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div id="noResults" style="display:none;text-align:center;padding:2rem;color:var(--text-muted);font-family:var(--font-mono);font-size:0.78rem">
+    No signatures match your search.
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentCat = 'ALL';
+let currentQuery = '';
+
+function filterCat(cat, el, event) {
+  // Bug 14 fixed — use event.preventDefault() instead of return false
+  if (event) event.preventDefault();
+  currentCat = cat;
+  document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+
+function filterSigs(query) {
+  currentQuery = query.toLowerCase();
+  applyFilters();
+}
+
+function applyFilters() {
+  const rows = document.querySelectorAll('#sigTableBody tr');
+  let visible = 0;
+  rows.forEach(row => {
+    const matchCat = currentCat === 'ALL' || row.dataset.cat === currentCat;
+    const matchQuery = !currentQuery || row.textContent.toLowerCase().includes(currentQuery);
+    const show = matchCat && matchQuery;
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
+}
+</script>
+{% endblock %}

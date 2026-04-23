@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — Dashboard{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>File Signature Analyzer</h1>
+    <p class="text-secondary" style="font-size:0.85rem;margin-top:0.25rem">
+      Magic-number detection, cryptographic hashing, hex visualization, and anomaly analysis
+    </p>
+  </div>
+  <div class="d-flex gap-3">
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--accent)">{{ sig_count }}</span>
+      <span class="stat-label">Signatures</span>
+    </div>
+    <div class="stat-box">
+      <span class="stat-number" style="color:var(--risk-low)">MD5</span>
+      <span class="stat-label">SHA-256</span>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+
+  {# ── Single File Upload ───────────────────────────────────────────── #}
+  <div class="col-lg-7">
+    <div class="card-forensic p-4">
+      <div class="section-label mb-3">Single File Analysis</div>
+      <form id="uploadForm" action="{{ url_for('scan_file') }}" method="POST" enctype="multipart/form-data">
+        <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+          <i class="bi bi-cloud-upload" style="font-size:2rem;color:var(--accent);display:block;margin-bottom:0.75rem"></i>
+          <div style="font-family:var(--font-mono);font-size:0.8rem;color:var(--text-secondary)">
+            Drop file here or click to browse
+          </div>
+          <div style="font-size:0.7rem;color:var(--text-muted);margin-top:0.4rem">
+            Max 50MB — executable uploads blocked
+          </div>
+          <div id="dropFileName" style="margin-top:0.75rem;font-family:var(--font-mono);font-size:0.78rem;color:var(--accent);display:none"></div>
+        </div>
+        <input type="file" id="fileInput" name="file" style="display:none" onchange="onFileSelected(this)">
+        <div class="mt-3 d-flex gap-2">
+          <button type="submit" id="scanBtn" class="btn-forensic flex-grow-1">
+            <i class="bi bi-search me-1"></i> Analyze File
+          </button>
+          <span id="scanSpinner" class="spinner-forensic" style="display:none">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            Analyzing...
+          </span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Directory Scan ───────────────────────────────────────────────── #}
+  <div class="col-lg-5">
+    <div class="card-forensic p-4">
+      <div class="section-label mb-3">Directory Scan</div>
+      <form id="dirForm" action="{{ url_for('scan_directory') }}" method="POST">
+        <label style="font-size:0.78rem;color:var(--text-secondary);display:block;margin-bottom:0.4rem">
+          Evidence directory path
+        </label>
+        <input
+          type="text"
+          name="dirpath"
+          id="dirpathInput"
+          class="input-forensic w-100"
+          placeholder="e.g. /evidence/case-001"
+          autocomplete="off"
+          spellcheck="false"
+        >
+        <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.4rem">
+          Restricted to approved evidence roots. Symlinks skipped. Cap: 500 files.
+        </div>
+        <div class="mt-3 d-flex gap-2">
+          <button type="submit" id="dirScanBtn" class="btn-forensic flex-grow-1">
+            <i class="bi bi-folder2-open me-1"></i> Scan Directory
+          </button>
+          <span id="dirSpinner" class="spinner-forensic" style="display:none">
+            <span class="spinner-border spinner-border-sm" role="status"></span>
+            Scanning...
+          </span>
+        </div>
+      </form>
+    </div>
+
+    {# ── Pipeline Steps ────────────────────────────────────────────── #}
+    <div class="card-forensic p-4 mt-3">
+      <div class="section-label mb-3">Analysis Pipeline</div>
+      {% set hash_desc = "Streaming MD5 + SHA-256 computed in 64KB chunks. Matches NIST forensic standards." %}
+      {% set steps = [
+        ("01", "bi-fingerprint",      "Magic Number Detection",  "Header bytes matched against " ~ sig_count ~ "+ signatures using longest-match algorithm.",                "SIGNATURE"),
+        ("02", "bi-shield-lock-fill", "Hash Computation",        hash_desc,                                                                                                 "CRYPTO"),
+        ("03", "bi-file-binary",      "Hex Visualization",       "First 64 bytes rendered in xxd-compatible address/hex/ASCII format.",                                     "HEX"),
+        ("04", "bi-bug-fill",         "Anomaly Detection",       "Extension mismatch, executable-in-document, high entropy, and suspicious string pattern scanning.",       "YARA"),
+        ("05", "bi-filetype-json",    "Chain-of-Custody Export", "JSON with metadata envelope + CSV for Autopsy/FTK integration.",                                          "EXPORT"),
+      ] %}
+      {% for num, icon, title, desc, tag in steps %}
+      <div class="pipeline-step">
+        <div class="pipeline-num">{{ num }}</div>
+        <div class="flex-grow-1">
+          <div style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary);display:flex;align-items:center;gap:0.5rem">
+            <i class="bi {{ icon }}" style="color:var(--accent)"></i>
+            {{ title }}
+            <span class="section-label" style="margin-left:auto">{{ tag }}</span>
+          </div>
+          <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.2rem">{{ desc }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
