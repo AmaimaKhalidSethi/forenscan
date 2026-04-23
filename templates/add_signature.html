@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+{% block title %}ForenScan — {{ 'Edit' if edit_mode else 'Add' }} Signature{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1>{{ 'Edit Signature' if edit_mode else 'Add Signature' }}</h1>
+    <p class="text-secondary" style="font-size:0.85rem;margin-top:0.25rem">
+      {% if edit_mode %}
+        Modify an existing magic-number signature (ID {{ sig_id }})
+      {% else %}
+        Register a new magic-number signature for file identification
+      {% endif %}
+    </p>
+  </div>
+  <a href="{{ url_for('signatures') }}" class="btn-forensic" style="border-color:var(--border-accent);color:var(--text-secondary)">
+    <i class="bi bi-arrow-left me-1"></i>Back to Signatures
+  </a>
+</div>
+
+{# ── Validation guide ────────────────────────────────────────────────── #}
+<div class="card-forensic p-4 mb-4" style="border-left-color:var(--accent)">
+  <div class="section-label mb-2">Validation Rules</div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:0.6rem">
+    {% for rule in [
+      ('bi-check2-circle','Header hex',       'Minimum 1 byte, max 32 bytes. Format: FF D8 FF or FFD8FF or FF:D8:FF'),
+      ('bi-check2-circle','Footer hex',       'Optional. Same format as header. Leave blank if no known end marker.'),
+      ('bi-check2-circle','Extensions',       'Comma or space separated. No dots needed. e.g: jpg, jpeg, jpe'),
+      ('bi-check2-circle','MIME type',        'Standard type/subtype format. e.g: image/jpeg'),
+      ('bi-check2-circle','Duplicate check',  'Same header + same extension as an existing signature is rejected.'),
+      ('bi-check2-circle','CRITICAL risk',    'Reserved for EXECUTABLE and SCRIPT categories only.'),
+    ] %}
+    <div style="display:flex;align-items:flex-start;gap:0.5rem;font-size:0.75rem">
+      <i class="bi {{ rule[0] }}" style="color:var(--risk-low);margin-top:2px;flex-shrink:0"></i>
+      <span><span style="color:var(--text-primary);font-family:var(--font-mono)">{{ rule[1] }}</span>
+        <span style="color:var(--text-muted)"> — {{ rule[2] }}</span></span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{# ── Form ────────────────────────────────────────────────────────────── #}
+<form method="POST"
+      action="{{ url_for('edit_signature', sig_id=sig_id) if edit_mode else url_for('add_signature') }}"
+      id="sigForm" novalidate>
+
+  <div class="row g-4">
+
+    {# ── Left column ─────────────────────────────────────────────── #}
+    <div class="col-lg-7">
+      <div class="card-forensic p-4">
+        <div class="section-label mb-3">Identity</div>
+
+        {# Name #}
+        <div class="form-group mb-3">
+          <label class="field-label">Signature Name <span class="required-star">*</span></label>
+          <input type="text" name="name" class="input-forensic {% if errors.name %}input-error{% endif %}"
+                 value="{{ prefill.name or '' }}"
+                 placeholder="e.g. WebP Image, Kotlin Bytecode, LZ4 Block"
+                 maxlength="80" autocomplete="off">
+          {% if errors.name %}<div class="field-error">{{ errors.name }}</div>{% endif %}
+        </div>
+
+        {# Category #}
+        <div class="form-group mb-3">
+          <label class="field-label">Category <span class="required-star">*</span></label>
+          <select name="category" class="input-forensic select-forensic {% if errors.category %}input-error{% endif %}">
+            <option value="">— Select category —</option>
+            {% for cat in categories %}
+              <option value="{{ cat }}" {% if prefill.category == cat %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+          </select>
+          {% if errors.category %}<div class="field-error">{{ errors.category }}</div>{% endif %}
+        </div>
+
+        {# MIME type #}
+        <div class="form-group mb-3">
+          <label class="field-label">MIME Type <span class="required-star">*</span></label>
+          <input type="text" name="mime_type"
+                 class="input-forensic {% if errors.mime_type %}input-error{% endif %}"
+                 value="{{ prefill.mime_type or '' }}"
+                 placeholder="e.g. image/webp"
+                 maxlength="100" autocomplete="off" spellcheck="false">
+          <div class="field-hint">Standard IANA media type. Reference: <a href="https://www.iana.org/assignments/media-types/" target="_blank" style="color:var(--accent)">iana.org/media-types</a></div>
+          {% if errors.mime_type %}<div class="field-error">{{ errors.mime_type }}</div>{% endif %}
+        </div>
+
+        {# Extensions #}
+        <div class="form-group mb-3">
+          <label class="field-label">File Extensions <span class="required-star">*</span></label>
+          <input type="text" name="extensions"
+                 class="input-forensic {% if errors.extensions %}input-error{% endif %}"
+                 value="{{ prefill.extensions or '' }}"
+                 placeholder="jpg, jpeg, jpe  (comma or space separated)"
+                 autocomplete="off" spellcheck="false">
+          <div class="field-hint">No dots needed. Multiple extensions share the same signature (e.g. ZIP-based formats).</div>
+          {% if errors.extensions %}<div class="field-error">{{ errors.extensions }}</div>{% endif %}
+        </div>
+
+        {# Risk level #}
+        <div class="form-group mb-0">
+          <label class="field-label">Risk Level <span class="required-star">*</span></label>
+          <div class="risk-selector">
+            {% for level in risk_levels %}
+            <label class="risk-option risk-option-{{ level | lower }}">
+              <input type="radio" name="risk_level" value="{{ level }}"
+                     {% if prefill.risk_level == level %}checked{% endif %}>
+              <span class="risk-option-label">{{ level }}</span>
+            </label>
+            {% endfor %}
+          </div>
+          {% if errors.risk_level %}<div class="field-error">{{ errors.risk_level }}</div>{% endif %}
+          <div class="field-hint" id="riskHint">
+            <span id="riskHintText">Select a risk level above.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# ── Right column ────────────────────────────────────────────── #}
+    <div class="col-lg-5">
+      <div class="card-forensic p-4 mb-4">
+        <div class="section-label mb-3">Magic Bytes</div>
+
+        {# Header hex #}
+        <div class="form-group mb-3">
+          <label class="field-label">Header Hex <span class="required-star">*</span></label>
+          <div style="position:relative">
+            <input type="text" name="header_hex" id="headerHex"
+                   class="input-forensic {% if errors.header_hex %}input-error{% endif %}"
+                   value="{{ prefill.header_hex or '' }}"
+                   placeholder="e.g. FF D8 FF  or  FFD8FF  or  FF:D8:FF"
+                   autocomplete="off" spellcheck="false" style="font-family:var(--font-mono)">
+            <button type="button" class="btn-verify" onclick="verifyHex('header')" id="verifyHeaderBtn">
+              Verify
+            </button>
+          </div>
+          <div id="headerHexPreview" class="hex-preview-box" style="display:none"></div>
+          {% if errors.header_hex %}<div class="field-error">{{ errors.header_hex }}</div>{% endif %}
+          <div class="field-hint">The bytes at the start of the file that identify this format.</div>
+        </div>
+
+        {# Footer hex #}
+        <div class="form-group mb-0">
+          <label class="field-label">Footer Hex <span style="color:var(--text-muted);font-size:0.65rem">(optional)</span></label>
+          <div style="position:relative">
+            <input type="text" name="footer_hex" id="footerHex"
+                   class="input-forensic {% if errors.footer_hex %}input-error{% endif %}"
+                   value="{{ prefill.footer_hex or '' }}"
+                   placeholder="e.g. FF D9  (JPEG end marker)"
+                   autocomplete="off" spellcheck="false" style="font-family:var(--font-mono)">
+            <button type="button" class="btn-verify" onclick="verifyHex('footer')" id="verifyFooterBtn">
+              Verify
+            </button>
+          </div>
+          <div id="footerHexPreview" class="hex-preview-box" style="display:none"></div>
+          {% if errors.footer_hex %}<div class="field-error">{{ errors.footer_hex }}</div>{% endif %}
+          <div class="field-hint">End-of-file marker. Only define if the format has a reliable footer.</div>
+        </div>
+      </div>
+
+      {# ── Notes ─────────────────────────────────────────────────── #}
+      <div class="card-forensic p-4">
+        <div class="section-label mb-3">Notes <span style="color:var(--text-muted);font-size:0.65rem">(optional)</span></div>
+        <textarea name="notes" class="input-forensic"
+                  style="min-height:90px;resize:vertical"
+                  placeholder="Source reference, analyst name, detection context..."
+                  maxlength="500">{{ prefill.notes or '' }}</textarea>
+        <div class="field-hint">Stored for reference. Not used in detection.</div>
+      </div>
+    </div>
+  </div>
+
+  {# ── Submit ──────────────────────────────────────────────────────── #}
+  <div class="mt-4 d-flex gap-3 align-items-center">
+    <button type="submit" class="btn-forensic" style="padding:0.6rem 2rem">
+      <i class="bi bi-{% if edit_mode %}pencil{% else %}plus-circle{% endif %} me-2"></i>
+      {{ 'Save Changes' if edit_mode else 'Add Signature' }}
+    </button>
+    <a href="{{ url_for('signatures') }}" class="btn-forensic"
+       style="border-color:var(--border-accent);color:var(--text-muted)">Cancel</a>
+    <span style="font-size:0.68rem;color:var(--text-muted);margin-left:auto">
+      <span class="required-star">*</span> required fields
+    </span>
+  </div>
+</form>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── Risk level hints ─────────────────────────────────────────────────
+const riskHints = {
+  CRITICAL: 'Polyglot or dropper patterns — executable hidden inside another format. Reserved for EXECUTABLE / SCRIPT categories.',
+  HIGH:     'Directly executable code, scripts, interpreted bytecode. Requires careful handling.',
+  MEDIUM:   'Archives, containers, Office macros, disk images. May contain dangerous payloads.',
+  LOW:      'Standard media, documents, fonts, data formats with no direct execution risk.',
+};
+
+document.querySelectorAll('input[name="risk_level"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    document.getElementById('riskHintText').textContent = riskHints[radio.value] || '';
+  });
+});
+
+// Init hint for pre-selected value
+const checked = document.querySelector('input[name="risk_level"]:checked');
+if (checked) document.getElementById('riskHintText').textContent = riskHints[checked.value] || '';
+
+// ── Hex verify ───────────────────────────────────────────────────────
+async function verifyHex(which) {
+  const inputId  = which === 'header' ? 'headerHex'        : 'footerHex';
+  const previewId= which === 'header' ? 'headerHexPreview' : 'footerHexPreview';
+  const btnId    = which === 'header' ? 'verifyHeaderBtn'  : 'verifyFooterBtn';
+
+  const hexVal = document.getElementById(inputId).value.trim();
+  const preview = document.getElementById(previewId);
+  const btn = document.getElementById(btnId);
+
+  if (!hexVal) {
+    preview.style.display = 'none';
+    return;
+  }
+
+  btn.textContent = '...';
+  btn.disabled = true;
+
+  try {
+    const resp = await fetch('/signatures/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hex: hexVal }),
+    });
+    const data = await resp.json();
+
+    if (data.valid) {
+      // Normalise the input
+      document.getElementById(inputId).value = data.normalised;
+
+      // Build byte preview
+      const cells = data.preview.map(b =>
+        `<span class="byte-cell" title="Dec: ${b.dec}">${b.hex}<span class="byte-ascii">${b.ascii}</span></span>`
+      ).join('');
+
+      preview.innerHTML = `
+        <div class="preview-valid">
+          <i class="bi bi-check-circle-fill" style="color:var(--risk-low)"></i>
+          <span style="color:var(--risk-low)">Valid — ${data.bytes_count} byte${data.bytes_count !== 1 ? 's' : ''}</span>
+          <span class="ascii-str" title="ASCII representation">${data.ascii_repr}</span>
+        </div>
+        <div class="byte-row">${cells}</div>`;
+      preview.style.display = 'block';
+      document.getElementById(inputId).style.borderColor = 'var(--risk-low)';
+    } else {
+      preview.innerHTML = `
+        <div class="preview-error">
+          <i class="bi bi-exclamation-triangle-fill" style="color:var(--risk-high)"></i>
+          <span style="color:var(--risk-high)">${data.error}</span>
+        </div>`;
+      preview.style.display = 'block';
+      document.getElementById(inputId).style.borderColor = 'var(--risk-high)';
+    }
+  } catch (e) {
+    preview.innerHTML = `<div class="preview-error"><i class="bi bi-wifi-off"></i> Verification unavailable</div>`;
+    preview.style.display = 'block';
+  }
+
+  btn.textContent = 'Verify';
+  btn.disabled = false;
+}
+
+// Auto-verify on blur
+['headerHex', 'footerHex'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) {
+    el.addEventListener('blur', () => {
+      if (el.value.trim()) verifyHex(id === 'headerHex' ? 'header' : 'footer');
+    });
+    el.addEventListener('input', () => {
+      el.style.borderColor = '';
+      document.getElementById(id === 'headerHex' ? 'headerHexPreview' : 'footerHexPreview').style.display = 'none';
+    });
+  }
+});
+
+// ── Client-side pre-validation before submit ─────────────────────────
+document.getElementById('sigForm').addEventListener('submit', function(e) {
+  const name = this.querySelector('[name="name"]').value.trim();
+  const header = this.querySelector('[name="header_hex"]').value.trim();
+  const mime = this.querySelector('[name="mime_type"]').value.trim();
+  const exts = this.querySelector('[name="extensions"]').value.trim();
+  const risk = this.querySelector('input[name="risk_level"]:checked');
+  const cat = this.querySelector('[name="category"]').value;
+
+  if (!name || !header || !mime || !exts || !risk || !cat) {
+    e.preventDefault();
+    // Scroll to first empty required field
+    const required = [
+      { val: name,     el: this.querySelector('[name="name"]') },
+      { val: cat,      el: this.querySelector('[name="category"]') },
+      { val: mime,     el: this.querySelector('[name="mime_type"]') },
+      { val: exts,     el: this.querySelector('[name="extensions"]') },
+      { val: header,   el: this.querySelector('[name="header_hex"]') },
+    ];
+    for (const r of required) {
+      if (!r.val) { r.el.focus(); r.el.style.borderColor = 'var(--risk-high)'; break; }
+    }
+    if (!risk) {
+      document.querySelector('.risk-selector').scrollIntoView({ behavior: 'smooth' });
+    }
+  }
+});
+</script>
+{% endblock %}

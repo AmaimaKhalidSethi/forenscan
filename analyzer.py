@@ -345,6 +345,59 @@ class ForensicAnalyzer:
             results.append(d)
         return results
 
+    def add_signature(self, name: str, category: str, mime_type: str,
+                      header_hex: str, footer_hex: str | None,
+                      extensions: str, risk_level: str) -> int:
+        """Insert a new custom signature. Returns new row ID."""
+        with self._get_connection() as conn:
+            cur = conn.execute(
+                "INSERT INTO signatures "
+                "(name,category,mime_type,header_hex,footer_hex,extensions,risk_level)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (name, category, mime_type, header_hex, footer_hex, extensions, risk_level),
+            )
+            return cur.lastrowid
+
+    def update_signature(self, sig_id: int, name: str, category: str,
+                         mime_type: str, header_hex: str, footer_hex: str | None,
+                         extensions: str, risk_level: str) -> None:
+        """Update an existing signature by ID."""
+        with self._get_connection() as conn:
+            conn.execute(
+                "UPDATE signatures SET name=?,category=?,mime_type=?,header_hex=?,"
+                "footer_hex=?,extensions=?,risk_level=? WHERE id=?",
+                (name, category, mime_type, header_hex, footer_hex, extensions, risk_level, sig_id),
+            )
+
+    def delete_signature(self, sig_id: int) -> None:
+        """Delete a signature by ID."""
+        with self._get_connection() as conn:
+            conn.execute("DELETE FROM signatures WHERE id=?", (sig_id,))
+
+    def get_signature_by_id(self, sig_id: int) -> dict | None:
+        """Fetch a single signature by ID."""
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM signatures WHERE id=?", (sig_id,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def find_duplicate_signature(self, header_hex: str, extension: str) -> dict | None:
+        """Return existing signature with the same header_hex and matching extension, or None."""
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM signatures WHERE header_hex=?", (header_hex,)
+            ).fetchall()
+        for row in rows:
+            d = dict(row)
+            try:
+                exts = json.loads(d["extensions"])
+                if extension.lower() in [e.lower() for e in exts]:
+                    return d
+            except Exception:
+                pass
+        return None
+
     def get_signature_count(self) -> int:
         with self._get_connection() as conn:
             return conn.execute("SELECT COUNT(*) FROM signatures").fetchone()[0]

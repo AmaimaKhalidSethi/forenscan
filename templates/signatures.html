@@ -9,47 +9,46 @@
       {{ signatures | length }} magic-number signatures across {{ categories | length }} categories
     </p>
   </div>
+  <a href="{{ url_for('add_signature') }}" class="btn-forensic">
+    <i class="bi bi-plus-circle me-1"></i>Add Signature
+  </a>
 </div>
 
-{# ── Live Search — Bug 15 fix ───────────────────────────────────────── #}
+{# ── Live Search #}
 <div class="mb-3">
-  <input
-    type="text"
-    id="sigSearch"
-    class="input-forensic"
-    style="max-width:400px"
-    placeholder="Search by name, MIME, extension..."
-    oninput="filterSigs(this.value)"
-    autocomplete="off"
-    spellcheck="false"
-  >
+  <input type="text" id="sigSearch" class="input-forensic" style="max-width:400px"
+         placeholder="Search by name, MIME, extension..."
+         oninput="filterSigs(this.value)" autocomplete="off" spellcheck="false">
 </div>
 
-{# ── Category Filters — Bug 14 fixed: pass event ────────────────────── #}
+{# ── Category Filters #}
 <div class="cat-filters mb-3 d-flex flex-wrap gap-2">
   <button class="btn-filter active" data-cat="ALL" onclick="filterCat('ALL', this, event)">
     All <span class="cat-count">{{ signatures | length }}</span>
   </button>
   {% for cat in categories %}
     <button class="btn-filter" data-cat="{{ cat }}" onclick="filterCat('{{ cat }}', this, event)">
-      {{ cat }}
-      <span class="cat-count">{{ signatures | selectattr('category','equalto',cat) | list | length }}</span>
+      {{ cat }}<span class="cat-count">{{ signatures | selectattr('category','equalto',cat) | list | length }}</span>
     </button>
   {% endfor %}
 </div>
 
-{# ── Risk Legend ─────────────────────────────────────────────────────── #}
-<div class="d-flex gap-3 mb-3">
-  {% for level, color in [('CRITICAL','risk-critical'),('HIGH','risk-high'),('MEDIUM','risk-medium'),('LOW','risk-low')] %}
+{# ── Risk Legend #}
+<div class="d-flex gap-3 mb-3 flex-wrap align-items-center">
+  {% for level in ['CRITICAL','HIGH','MEDIUM','LOW'] %}
     <span class="risk-badge badge-{{ level | lower }}">{{ level }}</span>
   {% endfor %}
+  <span style="margin-left:auto;font-size:0.68rem;color:var(--text-muted);font-family:var(--font-mono)">
+    <i class="bi bi-pencil-square me-1"></i>Click row actions to edit or delete
+  </span>
 </div>
 
-{# ── Signatures Table ─────────────────────────────────────────────────── #}
+{# ── Table #}
 <div class="table-wrapper">
   <table class="table-forensic" id="sigTable">
     <thead>
       <tr>
+        <th style="width:36px">ID</th>
         <th>Name</th>
         <th>Category</th>
         <th>Header (Hex)</th>
@@ -57,17 +56,15 @@
         <th>Extensions</th>
         <th>MIME Type</th>
         <th>Risk</th>
+        <th style="width:90px">Actions</th>
       </tr>
     </thead>
     <tbody id="sigTableBody">
       {% for sig in signatures %}
-      <tr data-cat="{{ sig.category }}">
-        <td style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary)">
-          {{ sig.name }}
-        </td>
-        <td>
-          <span class="cat-badge cat-{{ sig.category | lower }}">{{ sig.category }}</span>
-        </td>
+      <tr data-cat="{{ sig.category }}" data-id="{{ sig.id }}">
+        <td style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-muted)">{{ sig.id }}</td>
+        <td style="font-family:var(--font-mono);font-size:0.78rem;color:var(--text-primary)">{{ sig.name }}</td>
+        <td><span class="cat-badge cat-{{ sig.category | lower }}">{{ sig.category }}</span></td>
         <td>
           <span class="hex-bytes" style="font-size:0.7rem">
             {{ sig.header_hex[:23] }}{% if sig.header_hex | length > 23 %}…{% endif %}
@@ -81,12 +78,21 @@
           {% endif %}
         </td>
         <td style="font-family:var(--font-mono);font-size:0.7rem;color:var(--text-secondary)">
-          {% set exts = sig.extensions | from_json %}
-          {{ exts | join(', .') | replace('', '.', 1) }}
+          {% set exts = sig.extensions | from_json %}.{{ exts | join(', .') }}
         </td>
         <td style="font-size:0.72rem;color:var(--text-muted)">{{ sig.mime_type }}</td>
+        <td><span class="risk-badge badge-{{ sig.risk_level | lower }}">{{ sig.risk_level }}</span></td>
         <td>
-          <span class="risk-badge badge-{{ sig.risk_level | lower }}">{{ sig.risk_level }}</span>
+          <div class="d-flex gap-1">
+            <a href="{{ url_for('edit_signature', sig_id=sig.id) }}"
+               class="btn-action btn-action-edit" title="Edit signature">
+              <i class="bi bi-pencil"></i>
+            </a>
+            <button type="button" class="btn-action btn-action-delete" title="Delete signature"
+                    onclick="confirmDelete({{ sig.id }}, '{{ sig.name | e }}')">
+              <i class="bi bi-trash3"></i>
+            </button>
+          </div>
         </td>
       </tr>
       {% endfor %}
@@ -97,38 +103,65 @@
   </div>
 </div>
 
+{# ── Delete Confirmation Modal #}
+<div id="deleteModal" class="modal-backdrop" style="display:none" onclick="closeDeleteModal(event)">
+  <div class="modal-forensic">
+    <div class="modal-header-forensic">
+      <i class="bi bi-exclamation-triangle-fill" style="color:var(--risk-high);font-size:1.2rem"></i>
+      <span style="font-family:var(--font-display);font-size:0.95rem;letter-spacing:2px">CONFIRM DELETE</span>
+    </div>
+    <div class="modal-body-forensic">
+      <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem">You are about to permanently delete:</p>
+      <div class="hash-box mb-3" id="deleteTargetName" style="color:var(--risk-high)"></div>
+      <p style="font-size:0.78rem;color:var(--text-muted)">
+        This signature will no longer be used in future scans. Past scan results are unaffected.
+      </p>
+    </div>
+    <div class="modal-footer-forensic">
+      <button class="btn-forensic" style="border-color:var(--border-accent);color:var(--text-muted)"
+              onclick="closeDeleteModal()">Cancel</button>
+      <form id="deleteForm" method="POST" action="" style="display:inline">
+        <button type="submit" class="btn-forensic" style="border-color:var(--risk-critical);color:var(--risk-critical)">
+          <i class="bi bi-trash3 me-1"></i>Delete
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let currentCat = 'ALL';
-let currentQuery = '';
+let currentCat = 'ALL', currentQuery = '';
 
 function filterCat(cat, el, event) {
-  // Bug 14 fixed — use event.preventDefault() instead of return false
   if (event) event.preventDefault();
   currentCat = cat;
   document.querySelectorAll('.btn-filter').forEach(b => b.classList.remove('active'));
   el.classList.add('active');
   applyFilters();
 }
-
-function filterSigs(query) {
-  currentQuery = query.toLowerCase();
-  applyFilters();
-}
-
+function filterSigs(query) { currentQuery = query.toLowerCase(); applyFilters(); }
 function applyFilters() {
   const rows = document.querySelectorAll('#sigTableBody tr');
   let visible = 0;
   rows.forEach(row => {
-    const matchCat = currentCat === 'ALL' || row.dataset.cat === currentCat;
-    const matchQuery = !currentQuery || row.textContent.toLowerCase().includes(currentQuery);
-    const show = matchCat && matchQuery;
+    const show = (currentCat === 'ALL' || row.dataset.cat === currentCat) &&
+                 (!currentQuery || row.textContent.toLowerCase().includes(currentQuery));
     row.style.display = show ? '' : 'none';
     if (show) visible++;
   });
   document.getElementById('noResults').style.display = visible === 0 ? 'block' : 'none';
 }
+function confirmDelete(sigId, sigName) {
+  document.getElementById('deleteTargetName').textContent = sigName;
+  document.getElementById('deleteForm').action = `/signatures/delete/${sigId}`;
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+function closeDeleteModal(e) {
+  if (!e || e.target === document.getElementById('deleteModal'))
+    document.getElementById('deleteModal').style.display = 'none';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDeleteModal(); });
 </script>
 {% endblock %}
